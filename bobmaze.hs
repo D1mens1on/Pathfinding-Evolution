@@ -3,6 +3,8 @@ module Main where
 import Data.List
 import Data.Char
 import Data.Maybe(catMaybes, fromJust)
+import System.Random
+import System.IO.Unsafe
 
 bestGenotype = encode [East, South, South]
 
@@ -25,7 +27,6 @@ elemAt :: [a] -> Int -> Maybe a
 elemAt xs i
     | i < 0 || i + 1 > length xs = Nothing
     | otherwise = Just $ xs !! i
-
 
 -------- MAP --------
 
@@ -84,16 +85,16 @@ type Generation = [Genome]
 encode :: Route -> Genotype
 encode [] = []
 encode (North:xs) = [False, False] ++ encode xs
-encode (South:xs) = [False, True]  ++ encode xs
-encode (East:xs)  = [True, False]  ++ encode xs
-encode (West:xs)  = [True, True]   ++ encode xs
+encode (East:xs) = [False, True]  ++ encode xs
+encode (West:xs)  = [True, False]  ++ encode xs
+encode (South:xs)  = [True, True]   ++ encode xs
 
 decode :: Genotype -> Route
 decode [] = []
 decode (False:False:xs) = (North : (decode xs))
-decode (False:True :xs) = (South : (decode xs))
-decode (True :False:xs) = (East : (decode xs))
-decode (True :True :xs) = (West : (decode xs))
+decode (False:True :xs) = (East : (decode xs))
+decode (True :False:xs) = (West : (decode xs))
+decode (True :True :xs) = (South : (decode xs))
 decode [_] = error "not a valig genome"
 
 determineFitness :: Pos -> Map -> Fitness
@@ -109,29 +110,46 @@ main = do
     putStrLn $ show $ testGenotype bestGenotype $ myMap
 
 -------- Notes ---------
---  
---  import System.Random
---
---  children_count :: Int
---  children_count = 10
---
---  nextGen :: IO (Generation)
---  nextGen = replicate (children_count) 
---      (mate (roulette current_generation) roulette (current generation))
---
---  genMap :: Generation -> [Genotype]
---  genMap g = [replicate (fromInteger ft) gt | gt <- map fst g, ft <- map snd g] 
---
---  roulette :: Generation -> IO (Genotype)
---  roulette g = (genMap g) !! (randInt (foldl (+ snd) g)) 
---
---  'randInt a' is a random int from 0 to a
---
---  randInt :: Int -> IO (Int)
---  randInt a = do
---      g <- newStdGen
---      head $ randomRs (0::Int, a::Int) g
---
---  mate dad mom = map mutate $ crossover dad mom
---
---  mutate genotype = 
+  
+
+children_count :: Int
+children_count = 2
+
+mutation_chance :: Float
+mutation_chance = 0.1
+
+crossover_rate :: Float
+crossover_rate = 0.7
+
+genome_length = 20
+
+myGeneration :: Generation
+myGeneration = [(replicate (genome_length * 2) True, 0), (replicate (genome_length * 2) False, 1)]
+
+
+nextGen :: Generation -> Map -> Generation
+nextGen g m = zip (nextGen' g) $ map (flip testGenotype m) $ nextGen' g
+nextGen' g = foldl1 (++) $ replicate (children_count) 
+    (mate (roulette g) (roulette g))
+
+weightedGenList :: Generation -> [Genotype]
+weightedGenList g = foldl1 (++) [replicate (ft + 1) gt | gt <- map fst g, ft <- map snd g] 
+
+roulette :: Generation -> Genotype
+roulette g = (weightedGenList g) !! (unsafePerformIO $ getStdRandom $ randomR(0::Int,(length g + sum (map snd g))::Int)) 
+
+mate :: Genotype -> Genotype -> [Genotype]
+mate dad mom = map mutate $ crossover dad mom
+
+mutate :: Genotype -> Genotype
+mutate g = map mutate' g
+    where mutate' a = if (unsafePerformIO $ 
+              getStdRandom $ randomR(0::Float, 1::Float)) < mutation_chance then (not a) else a
+
+crossover :: Genotype -> Genotype -> [Genotype]
+crossover dad mum = if 
+    (unsafePerformIO (getStdRandom $ randomR (0::Float,1::Float)) > crossover_rate) || 
+    mum == dad then 
+        [mum, dad] 
+    else [take cp mum ++ drop cp dad, take cp dad ++ drop cp mum]
+            where cp = unsafePerformIO $ getStdRandom $ randomR(0::Int, ((genome_length * 2) - 1)::Int)
