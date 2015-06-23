@@ -110,7 +110,7 @@ main = do
     putStrLn $ show $ testGenotype bestGenotype $ myMap
 
 -------- Notes ---------
-  
+-- Make all these strict: 
 
 children_count :: Int
 children_count = 2
@@ -129,8 +129,7 @@ myGeneration = [(replicate (genome_length * 2) True, 0), (replicate (genome_leng
 
 nextGen :: Generation -> Map -> Generation
 nextGen g m = zip (nextGen' g) $ map (flip testGenotype m) $ nextGen' g
-nextGen' g = foldl1 (++) $ replicate (children_count) 
-    (mate (roulette g) (roulette g))
+nextGen' g = (mate (roulette g) (roulette g))
 
 weightedGenList :: Generation -> [Genotype]
 weightedGenList g = foldl1 (++) [replicate (ft + 1) gt | gt <- map fst g, ft <- map snd g] 
