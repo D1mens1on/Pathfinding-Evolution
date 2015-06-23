@@ -51,13 +51,13 @@ data Direction = North | South | East | West deriving (Show, Eq)
 type Route = [Direction]
  
 move :: Direction -> Pos -> Map -> Pos
-move d p (Map m) = if ((fromJust (m `elemAt` fst (add d p))) `elemAt` snd (add d p)) `elem` map Just [Open, Exit, Entr] then 
-    (add d p) else p
-        where 
-            add North (r, c) = (r - 1, c)
-            add South (r, c) = (r + 1, c)
-            add East  (r, c) = (r, c + 1)
-            add West  (r, c) = (r, c - 1)
+move d p (Map m) = if ((fromJust (m `elemAt` fst (add d p))) `elemAt` snd (add d p)) 
+                      `elem` map Just [Open, Exit, Entr] then (add d p) else p
+   where 
+      add North (r, c) = (r - 1, c)
+      add South (r, c) = (r + 1, c)
+      add East  (r, c) = (r, c + 1)
+      add West  (r, c) = (r, c - 1)
 
 startPos :: Map -> Pos
 startPos (Map m) = (head $ catMaybes $ map (Entr `elemIndex`) (transpose m), 
@@ -76,29 +76,29 @@ evaluate (d:ds) p m = evaluate ds (move d p m) m
 
 -------- GENETICS --------
 
-type Genotype = [Allele]
-type Allele = (Bool, Bool)
+type Genotype = [Bool]
+type Genome = (Genotype, Fitness)
 type Fitness = Int
+type Generation = [Genome]
 
 encode :: Route -> Genotype
 encode [] = []
-encode (North:xs) = (False, False) : encode xs
-encode (South:xs) = (False, True) : encode xs
-encode (East:xs) = (True, False) : encode xs
-encode (West:xs) = (True, True) : encode xs
+encode (North:xs) = [False, False] ++ encode xs
+encode (South:xs) = [False, True]  ++ encode xs
+encode (East:xs)  = [True, False]  ++ encode xs
+encode (West:xs)  = [True, True]   ++ encode xs
 
 decode :: Genotype -> Route
 decode [] = []
-decode ((False, False):xs) = (North : (decode xs))
-decode ((False, True):xs) = (South : (decode xs))
-decode ((True, False):xs) = (East : (decode xs))
-decode ((True, True):xs) = (West : (decode xs))
+decode (False:False:xs) = (North : (decode xs))
+decode (False:True :xs) = (South : (decode xs))
+decode (True :False:xs) = (East : (decode xs))
+decode (True :True :xs) = (West : (decode xs))
+decode [_] = error "not a valig genome"
 
 determineFitness :: Pos -> Map -> Fitness
-determineFitness p (Map m)
-    | distance p (exitPos (Map m)) == 0 = 2 * (distance (startPos (Map m)) (exitPos (Map m)))
-    | otherwise = (distance (startPos (Map m)) (exitPos (Map m))) `div` 
-                  (distance p (exitPos (Map m)))
+determineFitness p (Map m) = (distance (startPos (Map m)) (exitPos (Map m))) `div` 
+                             ((distance p (exitPos (Map m))) + 1)
 
 testGenotype :: Genotype -> Map -> Fitness
 testGenotype g (Map m) = determineFitness (evaluate (decode g) (startPos (Map m)) (Map m)) (Map m)
@@ -107,3 +107,31 @@ testGenotype g (Map m) = determineFitness (evaluate (decode g) (startPos (Map m)
 
 main = do
     putStrLn $ show $ testGenotype bestGenotype $ myMap
+
+-------- Notes ---------
+--  
+--  import System.Random
+--
+--  children_count :: Int
+--  children_count = 10
+--
+--  nextGen :: IO (Generation)
+--  nextGen = replicate (children_count) 
+--      (mate (roulette current_generation) roulette (current generation))
+--
+--  genMap :: Generation -> [Genotype]
+--  genMap g = [replicate (fromInteger ft) gt | gt <- map fst g, ft <- map snd g] 
+--
+--  roulette :: Generation -> IO (Genotype)
+--  roulette g = (genMap g) !! (randInt (foldl (+ snd) g)) 
+--
+--  'randInt a' is a random int from 0 to a
+--
+--  randInt :: Int -> IO (Int)
+--  randInt a = do
+--      g <- newStdGen
+--      head $ randomRs (0::Int, a::Int) g
+--
+--  mate dad mom = map mutate $ crossover dad mom
+--
+--  mutate genotype = 
