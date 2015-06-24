@@ -107,7 +107,9 @@ testGenotype g (Map m) = determineFitness (evaluate (decode g) (startPos (Map m)
 ------- IO -------
 
 main = do
-    putStrLn $ show $ testGenotype bestGenotype $ myMap
+    next_gen <- nextGen myGeneration myMap
+    next_gen2 <- nextGen next_gen myMap
+    putStrLn $ show $ map (snd) $ next_gen2
 
 -------- Notes ---------
 -- Make all these strict: 
@@ -127,28 +129,39 @@ myGeneration :: Generation
 myGeneration = [(replicate (genome_length * 2) True, 0), (replicate (genome_length * 2) False, 1)]
 
 
-nextGen :: Generation -> Map -> Generation
-nextGen g m = zip (nextGen' g) $ map (flip testGenotype m) $ nextGen' g
-nextGen' g = (mate (roulette g) (roulette g))
+nextGen :: Generation -> Map -> IO Generation
+nextGen g m = do
+    mum <- roulette g
+    dad <- roulette g
+    next_gen <- mate mum dad
+    return $ zip (next_gen) $! (map (flip testGenotype m) $ next_gen)
 
 weightedGenList :: Generation -> [Genotype]
-weightedGenList g = foldl1 (++) [replicate (ft + 1) gt | gt <- map fst g, ft <- map snd g] 
+weightedGenList g = foldl1' (++) [replicate (ft + 1) gt | gt <- map fst g, ft <- map snd g] 
 
-roulette :: Generation -> Genotype
-roulette g = (weightedGenList g) !! (unsafePerformIO $ getStdRandom $ randomR(0::Int,(length g + sum (map snd g))::Int)) 
+roulette :: Generation -> IO Genotype
+roulette g = do
+    rand <- getStdRandom $ randomR (0::Int, (length g + sum (map snd g))::Int)
+    return $ (weightedGenList g) !! rand
 
-mate :: Genotype -> Genotype -> [Genotype]
-mate dad mom = map mutate $ crossover dad mom
+mate :: Genotype -> Genotype -> IO [Genotype]
+mate dad mum = do 
+    children <- crossover dad mum
+    sequence $ map mutate children
 
-mutate :: Genotype -> Genotype
-mutate g = map mutate' g
-    where mutate' a = if (unsafePerformIO $ 
-              getStdRandom $ randomR(0::Float, 1::Float)) < mutation_chance then (not a) else a
+mutate :: Genotype -> IO Genotype
+mutate g = sequence $ map mutate' g
 
-crossover :: Genotype -> Genotype -> [Genotype]
+mutate' :: Bool -> IO Bool
+mutate' a = do
+    rand <- getStdRandom $ randomR(0::Float, 1::Float)
+    if (rand < mutation_chance) then return (not a) else return a
+
+crossover :: Genotype -> Genotype -> IO [Genotype]
 crossover dad mum = if 
-    (unsafePerformIO (getStdRandom $ randomR (0::Float,1::Float)) > crossover_rate) || 
+    (unsafePerformIO $! getStdRandom $ randomR (0::Float,1::Float)) > crossover_rate || 
     mum == dad then 
-        [mum, dad] 
-    else [take cp mum ++ drop cp dad, take cp dad ++ drop cp mum]
-            where cp = unsafePerformIO $ getStdRandom $ randomR(0::Int, ((genome_length * 2) - 1)::Int)
+        return [mum, dad] 
+    else do
+        cp <- getStdRandom $ randomR(0::Int, ((genome_length * 2) - 1)::Int)
+        return [take cp mum ++ drop cp dad, take cp dad ++ drop cp mum]
