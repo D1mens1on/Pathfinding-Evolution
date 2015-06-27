@@ -1,26 +1,28 @@
+{-# OPTIONS_GHC -Wall #-}
+
 module Main where
 
-import Data.List
-import Data.Char
-import Data.Maybe(catMaybes, fromJust)
+import Data.List hiding (concat)
+--import Data.Char
+import Data.Maybe(catMaybes)
 import System.Random
-import System.IO.Unsafe
+--import qualified Data.Foldable as F
+--import Control.Monad
 
-bestGenotype = encode [East, South, South]
+textMap :: [String]
+textMap = ["XXXXXXXXXXXXXXX"
+          ,"3 X     XXX   X"
+          ,"X       XXX   X"
+          ,"X   XXX  X    X"
+          ,"X   XXX     X X"
+          ,"XX  XXX     X X"
+          ,"X    X    XXX X"
+          ,"X XX   X      2"
+          ,"X XX   X      X"
+          ,"XXXXXXXXXXXXXXX"]
 
-myMap = Map 
-    [
-        replicate 15 Wall,
-        [Exit, Open, Wall] ++ replicate 5 Open ++ replicate 3 Wall ++ replicate 3 Open ++ [Wall],
-        Wall : replicate 7 Open ++ replicate 3 Wall ++ replicate 3 Open ++ [Wall],
-        Wall : replicate 3 Open ++ replicate 3 Wall ++ [Open, Open, Wall] ++ replicate 4 Open ++ [Wall],
-        Wall : replicate 3 Open ++ replicate 3 Wall ++ replicate 5 Open ++ [Wall, Open, Wall],
-        [Wall, Wall, Open, Open] ++ replicate 3 Wall ++ replicate 5 Open ++ [Wall, Open, Wall],
-        Wall : replicate 4 Open ++ [Wall] ++ replicate 4 Open ++ replicate 3 Wall ++ [Open, Wall],
-        [Wall, Open, Wall, Wall] ++ replicate 3 Open ++ [Wall] ++ replicate 6 Open ++ [Entr],
-        [Wall, Open, Wall, Wall] ++ replicate 3 Open ++ [Wall] ++ replicate 6 Open ++ [Wall],
-        replicate 15 Wall        
-    ]
+myMap :: Map
+myMap = readMap textMap
 
 -- Maybe version of (!!)
 elemAt :: [a] -> Int -> Maybe a
@@ -32,48 +34,84 @@ elemAt xs i
 
 data Map = Map [[Square]]
 instance Show Map where
-    show (Map m) = intercalate "\n" $ map (foldl1 (++)) $ map (map show) m
+    show (Map m) = unlines . (map $ concat . (map show)) $ m
 
-showSqr :: Square -> String
-showSqr Exit = "3"
-showSqr Entr = "2"
-showSqr Wall = "1"
-showSqr Open = "0"
+readMap :: [String] ->  Map
+readMap = Map . readMap'
+    where readMap' [] = []
+          readMap' (x:xs) = map readSquare x : readMap' xs
 
-data Square = Exit | Entr | Open | Wall deriving (Eq)
+data Square = Exit | Entr | Open | Wall | Walk deriving (Eq)
 instance Show Square where
     show Exit = "3"
     show Entr = "2"
-    show Open = "0"
-    show Wall = "1"
+    show Open = " "
+    show Wall = "X"
+    show Walk = "."
+
+readSquare :: Char -> Square
+readSquare '3' = Exit
+readSquare '2' = Entr
+readSquare ' ' = Open
+readSquare 'X' = Wall
+readSquare '.' = Walk
+readSquare  _  = error "not a valid square"
 
 type Pos = (Int, Int)
-data Direction = North | South | East | West deriving (Show, Eq)
+--data Direction = North | South | East | West deriving (Show, Eq)
 type Route = [Direction]
- 
-move :: Direction -> Pos -> Map -> Pos
-move d p (Map m) = if ((fromJust (m `elemAt` fst (add d p))) `elemAt` snd (add d p)) 
-                      `elem` map Just [Open, Exit, Entr] then (add d p) else p
-   where 
-      add North (r, c) = (r - 1, c)
-      add South (r, c) = (r + 1, c)
-      add East  (r, c) = (r, c + 1)
-      add West  (r, c) = (r, c - 1)
+type Direction = (Int, Int)
+
+north :: (Int, Int)
+south :: (Int, Int)
+east  :: (Int, Int)
+west  :: (Int, Int)
+north = (-1, 0)
+south = ( 1, 0)
+east  = ( 0, 1)
+west  = ( 0,-1)
+
+--move :: Direction -> Pos -> Map -> Pos
+--move d p (Map m) = if (fromJust (m `elemAt` fst (add d p)) `elemAt` snd (add d p)) 
+--                      `elem` map Just [Open, Exit, Entr] then (add d p) else p
+--    where add :: Direction -> Pos -> Pos
+--          add North (r, c) = (r - 1, c)
+--          add South (r, c) = (r + 1, c)
+--          add East  (r, c) = (r, c + 1)
+--          add West  (r, c) = (r, c - 1)
+
+move :: Pos -> (Int, Int) -> Map -> Maybe Pos
+move p d (Map m) = maybe Nothing
+                          (\x -> if x == Wall then Nothing else Just newPos)
+                          (maybe Nothing (`elemAt` snd newPos) (m `elemAt` (fst newPos)))
+    where newPos = (fst d + fst p, snd d + snd p)
 
 startPos :: Map -> Pos
-startPos (Map m) = (head $ catMaybes $ map (Entr `elemIndex`) (transpose m), 
-                    head $ catMaybes $ map (Entr `elemIndex`) m)
+startPos (Map m) = (head . catMaybes . map (Entr `elemIndex`) . transpose $ m, 
+                    head . catMaybes . map (Entr `elemIndex`) $ m)
 
 exitPos :: Map -> Pos
-exitPos (Map m) = (head $ catMaybes $ map (Exit `elemIndex`) (transpose m), 
-                   head $ catMaybes $ map (Exit `elemIndex`) m)
+exitPos (Map m) = (head . catMaybes . map (Exit `elemIndex`) . transpose $ m, 
+                   head . catMaybes . map (Exit `elemIndex`) $ m)
 
 distance :: Pos -> Pos -> Int
 distance (r1, c1) (r2, c2) = abs (r1 - r2 + c1 - c2)
 
-evaluate :: Route -> Pos -> Map -> Pos
-evaluate [] p m = p
-evaluate (d:ds) p m = evaluate ds (move d p m) m
+evaluate :: Pos -> Route -> Map -> Maybe Pos
+evaluate p [] _ = Just p
+evaluate p (d:ds) m = maybe Nothing (\x -> evaluate x ds m) (move d p m)
+
+onMap :: Route -> Map -> Maybe Map
+onMap route mp = onMap' (startPos mp) route mp
+    where onMap' _ [] m = Just m
+          onMap' p (d:ds) m = maybe Nothing (\x -> onMap' x ds (changeMap x Walk m)) (move p d m)
+
+changeMap :: Pos -> Square -> Map -> Map
+changeMap p s (Map m) = Map $ (take (fst p) m) ++ 
+                              (take (snd p) (m !! fst p) ++ 
+                              [s] ++ 
+                              drop (snd p + 1) (m !! fst p)) : 
+                              drop (fst p + 1) m 
 
 -------- GENETICS --------
 
@@ -82,86 +120,95 @@ type Genome = (Genotype, Fitness)
 type Fitness = Int
 type Generation = [Genome]
 
+mate_count :: Int
+mate_count = 70
+
+child_count :: Int
+child_count = 2
+
+mutation_chance :: Float
+mutation_chance = 0.01
+
+crossover_rate :: Float
+crossover_rate = 0.6
+
+chromo_length :: Int
+chromo_length = 60
+
+change :: Fitness -> Int
+change = div 1 . flip (^) (2::Int) . (+ 1) -- 1 / ((x + 1) ^ 2)
+
+most_fit :: Fitness
+most_fit = 1
+
+least_fit :: Fitness
+least_fit = 100
+
+myGen :: Generation
+myGen = [(replicate (chromo_length) True, 100), (replicate (chromo_length) False, 100)]
+
 encode :: Route -> Genotype
 encode [] = []
-encode (North:xs) = [False, False] ++ encode xs
-encode (East:xs) = [False, True]  ++ encode xs
-encode (West:xs)  = [True, False]  ++ encode xs
-encode (South:xs)  = [True, True]   ++ encode xs
+encode ((-1, 0):xs) = [False, False] ++ encode xs
+encode (( 0, 1):xs) = [False, True]  ++ encode xs
+encode (( 0,-1):xs)  = [True, False]  ++ encode xs
+encode (( 1, 0):xs)  = [True, True]   ++ encode xs
+encode _ = error "not valid route"
 
 decode :: Genotype -> Route
 decode [] = []
-decode (False:False:xs) = (North : (decode xs))
-decode (False:True :xs) = (East : (decode xs))
-decode (True :False:xs) = (West : (decode xs))
-decode (True :True :xs) = (South : (decode xs))
-decode [_] = error "not a valig genome"
-
-determineFitness :: Pos -> Map -> Fitness
-determineFitness p (Map m) = (distance (startPos (Map m)) (exitPos (Map m))) `div` 
-                             ((distance p (exitPos (Map m))) + 1)
+decode (False:False:xs) = (north : (decode xs))
+decode (False:True :xs) = (east : (decode xs))
+decode (True :False:xs) = (west : (decode xs))
+decode (True :True :xs) = (south : (decode xs))
+decode [_] = error "not a valid genome"
 
 testGenotype :: Genotype -> Map -> Fitness
-testGenotype g (Map m) = determineFitness (evaluate (decode g) (startPos (Map m)) (Map m)) (Map m)
+testGenotype g m = maybe
+    least_fit
+    (distance (exitPos m))
+    (evaluate (startPos m) (decode g) m)
+
+timeline :: Generation -> IO ()
+timeline g = do
+    putStrLn . show . map (snd) $ g
+    if (most_fit ==) . maximum . map snd $ g then 
+        --(putStrLn . show . decode . fst . maximumBy (\a b -> compare (snd a) $ snd b) $ g)
+        putStrLn . show $ 
+            (onMap . decode . fst . (maximumBy (\a b -> compare (snd a) $ snd b))) g myMap else
+        nextGen g myMap >>= timeline
+
+nextGen :: Generation -> Map -> IO Generation
+nextGen g m = fmap concat . sequence . replicate mate_count $ 
+    roulette g >>= (\mum -> 
+        roulette g >>= (\dad -> mate mum dad)) >>= (\next_gen -> 
+            return $ zip (next_gen) $ (map (flip testGenotype m) $ next_gen))
+
+roulette :: Generation -> IO Genome
+roulette gen = fmap (roulette' gen) . getStdRandom . randomR $ (0, sum . map (change . snd) $ gen)
+    where roulette' :: Generation -> Fitness -> Genome
+          roulette' [] _ = error "empty generation"
+          roulette' [g] _ = g
+          roulette' (g:gs) n
+              | (0 >=) . (n -) . change . snd $ g = g
+              | otherwise = roulette' gs . (n -) . change . snd $ g
+
+mate :: Genome -> Genome -> IO [Genotype]
+mate dad mum = (crossover (fst dad) (fst mum)) >>= (\x -> sequence $ map mutate x)
+
+mutate :: Genotype -> IO Genotype
+mutate g = sequence . (map mutate') $ g
+    where mutate' :: Bool -> IO Bool
+          mutate' a = (getStdRandom . randomR $ (0,1::Float)) >>= (\x -> 
+              if x < mutation_chance then return (not a) else return a)
+
+crossover :: Genotype -> Genotype -> IO [Genotype]
+crossover dad mum = (getStdRandom . randomR $ (0,1::Float)) >>= (\x ->
+    if x > crossover_rate || mum == dad then return [mum, dad] else 
+    (getStdRandom . randomR $ (0::Int, chromo_length - 1)) >>= (\cp ->
+        return [take cp mum ++ drop cp dad, take cp dad ++ drop cp mum]))
 
 ------- IO -------
 
-main = do
-    next_gen <- nextGen myGeneration myMap
-    next_gen2 <- nextGen next_gen myMap
-    putStrLn $ show $ map (snd) $ next_gen2
-
--------- Notes ---------
--- Make all these strict: 
-
-children_count :: Int
-children_count = 2
-
-mutation_chance :: Float
-mutation_chance = 0.1
-
-crossover_rate :: Float
-crossover_rate = 0.7
-
-genome_length = 20
-
-myGeneration :: Generation
-myGeneration = [(replicate (genome_length * 2) True, 0), (replicate (genome_length * 2) False, 1)]
-
-
-nextGen :: Generation -> Map -> IO Generation
-nextGen g m = do
-    mum <- roulette g
-    dad <- roulette g
-    next_gen <- mate mum dad
-    return $ zip (next_gen) $! (map (flip testGenotype m) $ next_gen)
-
-weightedGenList :: Generation -> [Genotype]
-weightedGenList g = foldl1' (++) [replicate (ft + 1) gt | gt <- map fst g, ft <- map snd g] 
-
-roulette :: Generation -> IO Genotype
-roulette g = do
-    rand <- getStdRandom $ randomR (0::Int, (length g + sum (map snd g))::Int)
-    return $ (weightedGenList g) !! rand
-
-mate :: Genotype -> Genotype -> IO [Genotype]
-mate dad mum = do 
-    children <- crossover dad mum
-    sequence $ map mutate children
-
-mutate :: Genotype -> IO Genotype
-mutate g = sequence $ map mutate' g
-
-mutate' :: Bool -> IO Bool
-mutate' a = do
-    rand <- getStdRandom $ randomR(0::Float, 1::Float)
-    if (rand < mutation_chance) then return (not a) else return a
-
-crossover :: Genotype -> Genotype -> IO [Genotype]
-crossover dad mum = if 
-    (unsafePerformIO $! getStdRandom $ randomR (0::Float,1::Float)) > crossover_rate || 
-    mum == dad then 
-        return [mum, dad] 
-    else do
-        cp <- getStdRandom $ randomR(0::Int, ((genome_length * 2) - 1)::Int)
-        return [take cp mum ++ drop cp dad, take cp dad ++ drop cp mum]
+main :: IO ()
+main = timeline myGen
