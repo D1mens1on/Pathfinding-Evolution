@@ -32,7 +32,8 @@ module Genetics (newAllele, twoCutCrossover, rankScale, sigmaScale) where
 import System.Random
 import Data.List
 
-type Genotype = [Int]
+type Allele = Int
+type Genotype = [Allele]
 type Score = Float
 type Generation = [(Genotype, Score)]
 
@@ -45,11 +46,14 @@ genome_length = 20
 my_gen :: Generation
 my_gen = [([0],10),([1],5),([2],7),([3],-1)]
 
--- This function should be used to get a random 
-newAllele :: Int -> IO Int
+-- This function should be used to get a random new allele 
+-- You should apply this with the (!!) operator on the local
+-- list of alleles where the current allele is removed so
+-- that this function always selects a different allele
+newAllele :: Int -> IO Allele
 newAllele c = getStdRandom . randomR $ (0, c - 2)
 
-twoCutCrossover :: [Int] -> [Int] -> IO ([Int],[Int])
+twoCutCrossover :: Genotype -> Genotype -> IO (Genotype, Genotype)
 twoCutCrossover g1 g2 = do
     -- get two random cuts
     cut1 <- getStdRandom . randomR $ (0, length g1)
