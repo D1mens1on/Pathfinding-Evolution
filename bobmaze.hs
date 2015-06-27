@@ -16,8 +16,8 @@ textMap = ["XXXXXXXXXXXXXXX"
           ,"X   XXX  X    X"
           ,"X   XXX     X X"
           ,"XX  XXX     X X"
-          ,"X    X      X X"
-          ,"X XX   X    X 2"
+          ,"X    X     XX X"
+          ,"X XX   X      2"
           ,"X XX   X      X"
           ,"XXXXXXXXXXXXXXX"]
 
@@ -66,10 +66,12 @@ north :: (Int, Int)
 south :: (Int, Int)
 east  :: (Int, Int)
 west  :: (Int, Int)
+still :: (Int, Int)
 north = (-1, 0)
 south = ( 1, 0)
 east  = ( 0, 1)
 west  = ( 0,-1)
+still = ( 0, 0)
 
 move :: Pos -> (Int, Int) -> Map -> Maybe Pos
 move p d (Map m) = maybe 
@@ -120,8 +122,8 @@ changeMap p s (Map m) = Map $ (take (fst p) m) ++
 
 -------- GENETICS --------
 
-type Genotype = [Bool]
-type Genome = (Genotype, Fitness)
+--type Genotype = Route
+type Genome = (Route, Fitness)
 type Fitness = Float
 type Generation = [Genome]
 
@@ -155,32 +157,18 @@ least_fit :: Fitness
 least_fit = 0.0001
 
 myGen :: Generation
-myGen = [(replicate (chromo_length) True, least_fit), 
-         (replicate (chromo_length) False, least_fit)]
+myGen = [(replicate chromo_length still, least_fit), 
+         ([], least_fit)]
 
-encode :: Route -> Genotype
-encode [] = []
-encode ((-1, 0):xs) = [False, False] ++ encode xs
-encode (( 0, 1):xs) = [False, True]  ++ encode xs
-encode (( 0,-1):xs)  = [True, False]  ++ encode xs
-encode (( 1, 0):xs)  = [True, True]   ++ encode xs
-encode _ = error "not valid route"
-
-decode :: Genotype -> Route
-decode [] = []
-decode (False:False:xs) = (north : (decode xs))
-decode (False:True :xs) = (east  : (decode xs))
-decode (True :False:xs) = (west  : (decode xs))
-decode (True :True :xs) = (south : (decode xs))
-decode [_] = error "not a valid genome"
-
-testGenotype :: Genotype -> Map -> Fitness
-testGenotype g m = maybe least_fit
-                        (toFitness . (distance $ exitPos m))
-                        (evaluate (startPos m) (decode g) m)
+testGenotype :: Route -> Map -> Fitness
+testGenotype g m = maybe 
+    least_fit
+    (toFitness . (distance $ exitPos m))
+    (evaluate (startPos m) g m)
 
 timeline :: Generation -> Fitness -> IO ()
 timeline g best_fitness = do
+    putStrLn . show . map (toInt . snd) $ g
     if current_fitness == most_fit then
         putStrLn . show . fromJust . onMap (best_route g) $ myMap
     else if best_fitness < current_fitness then do
@@ -188,9 +176,9 @@ timeline g best_fitness = do
         next_timeline
     else
         next_timeline
-        where current_fitness = maximum . map snd $ g
-              best_route = decode . fst . (maximumBy (\(_,a) (_,b) -> compare a b))
-              next_timeline = nextGen g myMap >>= flip timeline current_fitness
+    where current_fitness = maximum . map snd $ g
+          best_route = fst . (maximumBy (\(_,a) (_,b) -> compare a b))
+          next_timeline = nextGen g myMap >>= flip timeline current_fitness
 
 
 nextGen :: Generation -> Map -> IO Generation
@@ -207,19 +195,28 @@ roulette gen = fmap (roulette' gen) . getStdRandom . randomR $ (0, sum . map snd
           roulette' (g:gs) n = if (0 >=) . (n -) . snd $ g then g else
               roulette' gs . (n -) . snd $ g
 
-mate :: Genome -> Genome -> IO [Genotype]
+mate :: Genome -> Genome -> IO [Route]
 mate dad mum = (crossover (fst dad) (fst mum)) >>= (\x -> sequence $ map mutate x)
 
-mutate :: Genotype -> IO Genotype
+mutate :: Route -> IO Route  
 mutate g = sequence . (map mutate') $ g
-    where mutate' :: Bool -> IO Bool
+    where mutate' :: Direction -> IO Direction
           mutate' a = (getStdRandom . randomR $ (0,1::Float)) >>= (\x -> 
-              if x < mutation_chance then return (not a) else return a)
+              if x < mutation_chance then 
+                  (getStdRandom . randomR $ (0,4::Int)) >>= (\x2 ->
+                      case x2 of
+                          0 -> return still
+                          1 -> return north
+                          2 -> return south
+                          3 -> return east
+                          4 -> return west
+                          _ -> return still)
+              else return a)
 
-crossover :: Genotype -> Genotype -> IO [Genotype]
+crossover :: Route -> Route -> IO [Route]
 crossover dad mum = (getStdRandom . randomR $ (0,1::Float)) >>= (\x ->
     if x > crossover_rate || mum == dad then return [mum, dad] else 
-    (getStdRandom . randomR $ (0::Int, chromo_length - 1)) >>= (\cp ->
+    (getStdRandom . randomR $ (0::Int, (chromo_length) - 1)) >>= (\cp ->
         return [take cp mum ++ drop cp dad, take cp dad ++ drop cp mum]))
 
 ------- IO -------
