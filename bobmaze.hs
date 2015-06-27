@@ -80,6 +80,10 @@ move p d (Map m) = maybe
     (maybe Nothing (`elemAt` snd newPos) (m `elemAt` (fst newPos)))
     where newPos = (fst d + fst p, snd d + snd p)
 
+removeStill :: Route -> Route
+removeStill [] = []
+removeStill (x:xs) = if x == still then removeStill xs else x : removeStill xs
+
 startPos :: Map -> Pos
 startPos (Map m) = (head . catMaybes . map (Entr `elemIndex`) . transpose $ m, 
                     head . catMaybes . map (Entr `elemIndex`) $ m)
@@ -93,7 +97,8 @@ distance (r1, c1) (r2, c2) = abs (r1 - r2 + c1 - c2)
 
 evaluate :: Pos -> Route -> Map -> Maybe Pos
 evaluate p [] _ = Just p
-evaluate p ((r1, c1):(r2,c2):ds) m = if r1 == -r2 && c1 == -c2 then
+evaluate p ((r1, c1):(r2,c2):ds) m = 
+    if and [not (0 `elem` [r1, c1, r2, c2]), r1 == -r2, c1 == -c2] then
         Nothing
     else
     maybe 
@@ -136,7 +141,7 @@ mate_count = 70
 -- child_count = 2
 
 mutation_chance :: Float
-mutation_chance = 0.02
+mutation_chance = 0.01
 
 crossover_rate :: Float
 crossover_rate = 0.5
@@ -158,7 +163,7 @@ least_fit = 0.0001
 
 myGen :: Generation
 myGen = [(replicate chromo_length still, least_fit), 
-         ([], least_fit)]
+         (replicate chromo_length still, least_fit)]
 
 testGenotype :: Route -> Map -> Fitness
 testGenotype g m = maybe 
@@ -168,7 +173,7 @@ testGenotype g m = maybe
 
 timeline :: Generation -> Fitness -> IO ()
 timeline g best_fitness = do
-    putStrLn . show . map (toInt . snd) $ g
+    --putStrLn . show . map (toInt . snd) $ g
     if current_fitness == most_fit then
         putStrLn . show . fromJust . onMap (best_route g) $ myMap
     else if best_fitness < current_fitness then do
