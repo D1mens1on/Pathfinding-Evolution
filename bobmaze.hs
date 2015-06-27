@@ -1,5 +1,28 @@
 {-# OPTIONS_GHC -Wall #-}
-
+--
+--
+-- Needed:
+--
+-- Mutation
+-- - simple bit swapping 
+-- - permutational allele swapping
+-- Crossover
+-- - Position based
+-- - Order based
+-- - One cut
+-- - Two cuts
+-- - Multiple cuts
+-- Fitness evaluation
+-- - Distance from goal
+-- Fitness scaling
+-- - Sigma scaling
+-- - Rank scaling
+-- Selection techniques
+-- - Elitism
+-- - Roulette Wheel
+-- - Stochastic Universal Sampling (Static roulette wheel)
+-- - Tournament selection
+-- Niching
 module Main where
 
 import Data.List hiding (concat)
@@ -9,16 +32,26 @@ import System.Random
 --import qualified Data.Foldable as F
 --import Control.Monad
 
+data Direction = North | East | South | West | Still
+
+allele_types :: [Direction]
+allele_types = [North, East, South, West, Still]
+
+newAllele :: IO Allele
+newAllele = fmap (allele_types !!) $ getStdRandom . randomR $ (0, length (allele_types) - 2)
+
+
+
 textMap :: [String]
 textMap = ["XXXXXXXXXXXXXXX"
-          ,"3 X     XXX   X"
-          ,"X       XXX   X"
-          ,"X   XXX  X    X"
-          ,"X   XXX     X X"
-          ,"XX  XXX     X X"
-          ,"X    X     XX X"
-          ,"X XX   X      2"
-          ,"X XX   X      X"
+          ,"2             X"
+          ,"X             X"
+          ,"X             X"
+          ,"X             X"
+          ,"X             X"
+          ,"X             X"
+          ,"X             X"
+          ,"X             3"
           ,"XXXXXXXXXXXXXXX"]
 
 myMap :: Map
@@ -98,7 +131,7 @@ distance (r1, c1) (r2, c2) = abs (r1 - r2 + c1 - c2)
 evaluate :: Pos -> Route -> Map -> Maybe Pos
 evaluate p [] _ = Just p
 evaluate p ((r1, c1):(r2,c2):ds) m = 
-    if and [not (0 `elem` [r1, c1, r2, c2]), r1 == -r2, c1 == -c2] then
+    if (r1 /= 0 || r2 /= 0 || c1 /= 0 || c2 /= 0) && r1 == -r2 && c1 == -c2 then
         Nothing
     else
     maybe 
@@ -144,10 +177,10 @@ mutation_chance :: Float
 mutation_chance = 0.01
 
 crossover_rate :: Float
-crossover_rate = 0.5
+crossover_rate = 0.0
 
 chromo_length :: Int
-chromo_length = 40
+chromo_length = 22
 
 toFitness :: Int -> Fitness
 toFitness = (1 /) . fromIntegral . (^ (2::Int)) . (+ 1)
@@ -159,17 +192,18 @@ most_fit :: Fitness
 most_fit = 1
 
 least_fit :: Fitness
-least_fit = 0.0001
+least_fit = 0.0000001
 
 myGen :: Generation
 myGen = [(replicate chromo_length still, least_fit), 
          (replicate chromo_length still, least_fit)]
 
 testGenotype :: Route -> Map -> Fitness
-testGenotype g m = maybe 
+testGenotype r m = maybe 
     least_fit
-    (toFitness . (distance $ exitPos m))
-    (evaluate (startPos m) g m)
+    (\pos -> ((toFitness . (distance $ exitPos m)) pos))-- / 
+    --(400 / (fromIntegral (((1 + (length . removeStill $ r)) ^ (2::Int))))))
+    (evaluate (startPos m) r m)
 
 timeline :: Generation -> Fitness -> IO ()
 timeline g best_fitness = do
